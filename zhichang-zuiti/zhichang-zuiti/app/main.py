@@ -36,6 +36,33 @@ async def root():
     return {"status": "ok", "message": "职场嘴替 Bot is running"}
 
 
+@app.post("/")
+async def root_webhook(request: Request):
+    """飞书Webhook入口（根路径）"""
+    try:
+        body = await request.body()
+        event = json.loads(body)
+        
+        # URL验证
+        if event.get("type") == "url_verification":
+            return {"challenge": event.get("challenge")}
+        
+        # 处理事件
+        result = await feishu_handler.handle_event(event)
+        
+        if result:
+            return JSONResponse(content={
+                "msg_type": "interactive",
+                "card": result
+            })
+        
+        return JSONResponse(content={"status": "ok"})
+    
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
 @app.get("/health")
 async def health():
     """健康检查"""
