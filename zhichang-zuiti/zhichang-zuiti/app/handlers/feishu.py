@@ -2,9 +2,9 @@
 职场嘴替 - 飞书事件处理器
 """
 import json
-import hashlib
+import os
 from typing import Optional
-from fastapi import Request
+import httpx
 
 from app.config import config
 from app.models.user import User, UserState, PersonaType, PERSONAS
@@ -18,80 +18,122 @@ class FeishuHandler:
     """飞书事件处理器"""
     
     def __init__(self):
-        self.verification_token = config.FEISHU_APP_ID
+        self.app_id = config.FEISHU_APP_ID
+        self.app_secret = config.FEISHU_APP_SECRET
+        self._tenant_access_token = ""
     
-    def verify_signature(self, request: Request, body: bytes) -> bool:
-        """验证飞书请求签名"""
-        # 简化版本，实际需要验证签名
-        return True
+    async def get_tenant_access_token(self) -> str:
+        """获取tenant_access_token"""
+        if self._tenant_access_token:
+            return self._tenant_access_token
+        
+        url = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
+        payload = {
+            "app_id": self.app_id,
+            "app_secret": self.app_secret,
+        }
+        
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(url, json=payload, timeout=10)
+            data = resp.json()
+            if data.get("code") == 0:
+                self._tenant_access_token = data.get("tenant_access_token", "")
+            else:
+                print(f"❌ 获取token失败: {data}")
+        
+        return self._tenant_access_token
+    
+    async def send_message(self, open_id: str, card: dict) -> bool:
+        """主动发送消息给用户"""
+        token = await self.get_tenant_access_token()
+        if not token:
+            print("❌ 没有tenant_access_token，无法发送消息")
+            return False
+        
+        url = "https://open.feishu.cn/open-apis/im/v1/messages"
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "receive_id": open_id,
+            "msg_type": "interactive",
+            "content": json.dumps(card),
+        }
+        
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(url, json=payload, headers=headers, timeout=15)
+            data = resp.json()
+            if data.get("code") != 0:
+                print(f"❌ 发送消息失败: {data}")
+                return False
+            return True
     
     async def handle_event(self, event: dict) -> Optional[dict]:
         """处理飞书事件"""
         event_type = event.get("type")
         
-        # URL验证
         if event_type == "url_verification":
             return {"challenge": event.get("challenge")}
         
-        # 消息事件
-        if event_type == "event_callback":
-            return await self._handle_message_event(event.get("event", {}))
+        header = event.get("header", {})
+        event_type_v2 = header.get("event_type", "")
         
-        # 卡片回调
+        if event_type_v2 == "im.message.receive_v1":
+            event_data = event.get("event", {})
+            await self._handle_message_event(event_data)
+            return None
+        
         if event_type == "card":
-            return await self._handle_card_callback(event)
+            await self._handle_card_callback(event)
+            return None
         
         return None
     
-    async def _handle_message_event(self, event: dict) -> Optional[dict]:
+    async def _handle_message_event(self, event: dict):
         """处理消息事件"""
         sender = event.get("sender", {})
-        open_id = sender.get("sender_id", {}).get("open_id", "")
+        sender_id = sender.get("sender_id", {})
+        open_id = sender_id.get("open_id", "")
         
         if not open_id:
-            return None
+            print("❌ 无法获取open_id")
+            return
         
         message = event.get("message", {})
         msg_type = message.get("msg_type")
         content = message.get("content", "")
         
-        # 获取或创建用户
         user = db.get_user(open_id)
         if not user:
             user = db.create_user(open_id)
         
-        # 处理不同消息类型
+        card = None
+        
         if msg_type == "text":
             text = json.loads(content).get("text", "") if isinstance(content, str) else content
-            return await self._handle_text_message(user, text)
-        
+            card = await self._handle_text_message(user, text)
         elif msg_type == "image":
-            # TODO: OCR处理
-            return card_builder.simple_text_card("📷 已收到截图，正在识别中...", "blue")
-        
+            card = card_builder.simple_text_card("📷 已收到截图，正在识别中...", "blue")
         elif msg_type == "post":
-            # 转发的消息
-            return await self._handle_forward_message(user, content)
+            card = card_builder.simple_text_card("📨 已收到转发的对话，正在处理中...", "blue")
         
-        return None
+        if card:
+            await self.send_message(open_id, card)
     
-    async def _handle_text_message(self, user: User, text: str) -> dict:
+    async def _handle_text_message(self, user: User, text: str) -> Optional[dict]:
         """处理文本消息"""
         text = text.strip()
         
-        # 快捷指令处理
         if text in ["帮助", "怎么用", "说明", "help"]:
             return card_builder.help_card()
-        
         if text in ["换人设", "切换人设", "switch"]:
             return card_builder.persona_select_card(user.current_persona)
-        
         if text in ["请外援", "外援", "reinforcement"]:
             if not user.current_persona:
                 return card_builder.simple_text_card("🤔 你还没有选择人设，请先选择一个人设！", "orange")
             remaining = user.get_reinforcement_remaining(config.REINFORCEMENT_DAILY_LIMIT)
             return card_builder.reinforcement_select_card(user.current_persona, remaining)
-        
         if text in ["重新测试", "再测一次", "test"]:
             user.state = UserState.IN_QUIZ
             user.quiz_progress = 0
@@ -99,158 +141,104 @@ class FeishuHandler:
             db.update_user(user)
             question = get_question(1)
             return card_builder.quiz_card(question, 0)
-        
         if text in ["当前人设", "我的人设", "persona"]:
             if user.current_persona:
                 p = PERSONAS[user.current_persona]
                 return card_builder.simple_text_card(f"当前人设：{p.emoji} {p.title}\n\"{p.quote}\"", p.header_template)
             return card_builder.simple_text_card("你还没有选择人设", "orange")
         
-        # 根据用户状态处理
         if user.state == UserState.NEW:
-            # 新用户，引导选择人设
             return card_builder.welcome_card()
-        
         if user.state == UserState.IN_QUIZ:
-            # 正在做测试，忽略非选项消息
             question = get_question(user.quiz_progress + 1)
             if question:
                 return card_builder.quiz_card(question, user.quiz_progress)
             return card_builder.welcome_card()
-        
         if user.state == UserState.HAS_PERSONA or user.state == UserState.WAITING_REPLY:
-            # 已有人设，生成回复
             if not user.current_persona:
                 return card_builder.persona_select_card()
-            
-            # 调用LLM生成回复
             suggestion = llm_service.generate_reply(user.current_persona, text)
             remaining = user.get_reinforcement_remaining(config.REINFORCEMENT_DAILY_LIMIT)
-            
             return card_builder.reply_card(suggestion, text, remaining)
         
         return card_builder.welcome_card()
     
-    async def _handle_forward_message(self, user: User, content: dict) -> dict:
-        """处理转发消息"""
-        # 解析转发的内容
-        # TODO: 实际解析飞书转发消息格式
-        return card_builder.simple_text_card("📨 已收到转发的对话，正在处理中...", "blue")
-    
-    async def _handle_card_callback(self, event: dict) -> Optional[dict]:
+    async def _handle_card_callback(self, event: dict):
         """处理卡片回调"""
         action = event.get("action", {})
         value = action.get("value", {})
-        
         open_id = event.get("open_id", "")
         if not open_id:
-            return None
+            return
         
         user = db.get_user(open_id)
         if not user:
             user = db.create_user(open_id)
         
         action_type = value.get("action")
+        card = None
         
-        # 开始测试
         if action_type == "start_quiz":
             user.state = UserState.IN_QUIZ
             user.quiz_progress = 0
             user.quiz_answers = []
             db.update_user(user)
             question = get_question(1)
-            return card_builder.quiz_card(question, 0)
-        
-        # 答题
-        if action_type == "answer":
+            card = card_builder.quiz_card(question, 0)
+        elif action_type == "answer":
             question_id = value.get("question_id", 1)
             answer = value.get("answer", "A")
-            
-            # 保存答案
             user = db.save_quiz_answer(open_id, question_id, answer)
-            
-            # 检查是否完成
             if question_id >= len(QUIZ_QUESTIONS):
-                # 计算结果
                 scores = calculate_persona_scores(user.quiz_answers)
                 dominant = get_dominant_persona(scores)
-                
                 user.state = UserState.HAS_PERSONA
                 user.current_persona = dominant
                 db.update_user(user)
-                
-                return card_builder.quiz_result_card(dominant, scores)
-            
-            # 继续下一题
-            question = get_question(question_id + 1)
-            return card_builder.quiz_card(question, question_id)
-        
-        # 选择人设
-        if action_type == "select_persona":
+                card = card_builder.quiz_result_card(dominant, scores)
+            else:
+                question = get_question(question_id + 1)
+                card = card_builder.quiz_card(question, question_id)
+        elif action_type == "select_persona":
             persona_str = value.get("persona")
             if persona_str:
                 persona = PersonaType(persona_str)
                 user = db.set_persona(open_id, persona)
                 p = PERSONAS[persona]
-                return card_builder.simple_text_card(
-                    f"✅ 已切换到【{p.emoji} {p.title}】\n\n\"{p.quote}\"\n\n从现在开始，我会用这个人设帮你回复。💬 把同事的消息发给我吧！",
-                    p.header_template
-                )
-            return card_builder.persona_select_card()
-        
-        # 确认人设（测试结果后）
-        if action_type == "confirm_persona":
+                card = card_builder.simple_text_card(f"✅ 已切换到【{p.emoji} {p.title}】\n\n\"{p.quote}\"\n\n💬 把同事的消息发给我吧！", p.header_template)
+            else:
+                card = card_builder.persona_select_card()
+        elif action_type == "confirm_persona":
             persona_str = value.get("persona")
             if persona_str:
                 persona = PersonaType(persona_str)
                 user = db.set_persona(open_id, persona)
                 p = PERSONAS[persona]
-                return card_builder.simple_text_card(
-                    f"✅ 已选择【{p.emoji} {p.title}】\n\n💬 把同事的消息发给我，我帮你回复！",
-                    p.header_template
-                )
-            return card_builder.welcome_card()
-        
-        # 请外援
-        if action_type == "call_reinforcement":
+                card = card_builder.simple_text_card(f"✅ 已选择【{p.emoji} {p.title}】\n\n💬 把同事的消息发给我吧！", p.header_template)
+            else:
+                card = card_builder.welcome_card()
+        elif action_type == "call_reinforcement":
             if not user.current_persona:
-                return card_builder.persona_select_card()
-            
-            # 检查是否有指定人设
-            persona_str = value.get("persona")
-            if persona_str:
-                target_persona = PersonaType(persona_str)
-                
-                # 检查次数
-                user, success = db.use_reinforcement(open_id)
-                if not success:
-                    return card_builder.reinforcement_exhaust_card()
-                
-                # TODO: 需要原始消息才能生成回复
-                return card_builder.simple_text_card(
-                    f"🆘 已呼叫【{PERSONAS[target_persona].emoji} {PERSONAS[target_persona].title}】外援！\n\n请重新发送同事的消息，我将用外援人设帮你回复。",
-                    "purple"
-                )
-            
-            # 显示选择列表
-            remaining = user.get_reinforcement_remaining(config.REINFORCEMENT_DAILY_LIMIT)
-            return card_builder.reinforcement_select_card(user.current_persona, remaining)
+                card = card_builder.persona_select_card()
+            else:
+                persona_str = value.get("persona")
+                if persona_str:
+                    target_persona = PersonaType(persona_str)
+                    user, success = db.use_reinforcement(open_id)
+                    if not success:
+                        card = card_builder.reinforcement_exhaust_card()
+                    else:
+                        card = card_builder.simple_text_card(f"🆘 已呼叫【{PERSONAS[target_persona].emoji} {PERSONAS[target_persona].title}】外援！\n\n请重新发送同事的消息。", "purple")
+                else:
+                    remaining = user.get_reinforcement_remaining(config.REINFORCEMENT_DAILY_LIMIT)
+                    card = card_builder.reinforcement_select_card(user.current_persona, remaining)
+        elif action_type == "switch_persona":
+            card = card_builder.persona_select_card(user.current_persona)
+        elif action_type == "help":
+            card = card_builder.help_card()
         
-        # 换人设
-        if action_type == "switch_persona":
-            return card_builder.persona_select_card(user.current_persona)
-        
-        # 复制
-        if action_type == "copy":
-            # 飞书会自动处理复制，这里不需要返回
-            return None
-        
-        # 帮助
-        if action_type == "help":
-            return card_builder.help_card()
-        
-        return None
+        if card:
+            await self.send_message(open_id, card)
 
 
-# 全局事件处理器
 feishu_handler = FeishuHandler()
