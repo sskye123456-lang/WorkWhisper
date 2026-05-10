@@ -103,3 +103,10 @@ if __name__ == "__main__":
         port=config.SERVER_PORT,
         reload=True,
     )
+@app.post("/")
+async def root_webhook(request: Request):
+    body = await request.body()
+    event = json.loads(body)
+    if event.get("type") == "url_verification":
+        return {"challenge": event.get("challenge")}
+    return await webhook(request)
