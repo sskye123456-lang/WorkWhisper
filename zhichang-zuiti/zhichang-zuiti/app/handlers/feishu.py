@@ -22,11 +22,13 @@ class FeishuHandler:
         self._tenant_access_token = ""
     
     async def get_tenant_access_token(self) -> str:
+        """获取tenant_access_token"""
         if self._tenant_access_token:
             return self._tenant_access_token
         
         url = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
         
+        # 调试信息
         aid_len = len(self.app_id) if self.app_id else 0
         ase_len = len(self.app_secret) if self.app_secret else 0
         print("DEBUG app_id len=" + str(aid_len) + " secret_len=" + str(ase_len))
@@ -38,10 +40,12 @@ class FeishuHandler:
         payload["app_secret"] = self.app_secret.strip() if self.app_secret else ""
         
         async with httpx.AsyncClient() as client:
+            # JSON格式
             resp = await client.post(url, json=payload, timeout=10)
             data = resp.json()
             print("DEBUG json resp=" + str(data))
             
+            # 如果失败，尝试form-data格式
             if data.get("code") != 0:
                 resp2 = await client.post(url, data=payload, timeout=10)
                 data2 = resp2.json()
@@ -58,6 +62,7 @@ class FeishuHandler:
         return self._tenant_access_token
     
     async def send_message(self, open_id: str, card: dict) -> bool:
+        """主动发送消息给用户"""
         token = await self.get_tenant_access_token()
         if not token:
             print("ERROR no token")
@@ -82,19 +87,24 @@ class FeishuHandler:
             return True
     
     async def handle_event(self, event: dict) -> Optional[dict]:
+        """处理飞书事件"""
         event_type = event.get("type")
         
+        # URL验证
         if event_type == "url_verification":
             return {"challenge": event.get("challenge")}
         
+        # 飞书v2事件格式
         header = event.get("header", {})
         event_type_v2 = header.get("event_type", "")
         
+        # 处理消息事件
         if event_type_v2 == "im.message.receive_v1":
             event_data = event.get("event", {})
             await self._handle_message_event(event_data)
             return None
         
+        # 处理卡片回调
         if event_type == "card":
             await self._handle_card_callback(event)
             return None
@@ -102,6 +112,7 @@ class FeishuHandler:
         return None
     
     async def _handle_message_event(self, event: dict):
+        """处理消息事件"""
         sender = event.get("sender", {})
         sender_id = sender.get("sender_id", {})
         open_id = sender_id.get("open_id", "")
@@ -114,6 +125,7 @@ class FeishuHandler:
         msg_type = message.get("msg_type")
         content = message.get("content", "")
         
+        # 获取或创建用户
         user = db.get_user(open_id)
         if not user:
             user = db.create_user(open_id)
@@ -132,8 +144,10 @@ class FeishuHandler:
             await self.send_message(open_id, card)
     
     async def _handle_text_message(self, user: User, text: str) -> Optional[dict]:
+        """处理文本消息"""
         text = text.strip()
         
+        # 快捷指令
         if text in ["帮助", "怎么用", "说明", "help"]:
             return card_builder.help_card()
         
@@ -161,6 +175,7 @@ class FeishuHandler:
                 return card_builder.simple_text_card(msg, p.header_template)
             return card_builder.simple_text_card("你还没有选择人设", "orange")
         
+        # 根据用户状态处理
         if user.state == UserState.NEW:
             return card_builder.welcome_card()
         
@@ -181,6 +196,7 @@ class FeishuHandler:
         return card_builder.welcome_card()
     
     async def _handle_card_callback(self, event: dict):
+        """处理卡片回调"""
         action = event.get("action", {})
         value = action.get("value", {})
         
