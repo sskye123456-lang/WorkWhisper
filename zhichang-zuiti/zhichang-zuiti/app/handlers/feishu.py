@@ -23,15 +23,16 @@ class FeishuHandler:
         self._tenant_access_token = ""
     
     async def get_tenant_access_token(self) -> str:
-        """获取tenant_access_token"""
         if self._tenant_access_token:
             return self._tenant_access_token
         
         url = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
         
-        # 打印调试信息（脱敏）
-        app_id_display = self.app_id[:8] + "..." if self.app_id and len(self.app_id) > 8 else self.app_id
-        app_secret_display = self.app_secret[:4] + "..." if self.app_secret and len(self.app_secret) > 4 else "(empty)"
-        print(f"🔑 尝试获取token - app_id: {app_id_display}, app_secret: {app_secret_display}")
-        print(f"🔑 app_id长度: {len(self.app_id) if self.app_id else 0}, app_secret长度: {len(self.app_secret) if self.app_secret else 0}")
-        print(f"🔑 app_id repr: {repr(self.app_id)}
+        aid_len = len(self.app_id) if self.app_id else 0
+        ase_len = len(self.app_secret) if self.app_secret else 0
+        print("DEBUG app_id len=" + str(aid_len) + " secret_len=" + str(ase_len))
+        print("DEBUG app_id=" + str(self.app_id[:10]) + "...")
+        print("DEBUG app_secret=" + str(self.app_secret[:6]) + "...")
+        
+        payload = {
+            "app_id": self.app_id.strip
