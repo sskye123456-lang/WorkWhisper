@@ -19,7 +19,18 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="zhichang-zuiti", version="1.0.0", lifespan=lifespan)
 
-
+@app.get("/debug")
+async def debug():
+    aid = config.FEISHU_APP_ID
+    ase = config.FEISHU_APP_SECRET
+    return {
+        "app_id_set": aid != "",
+        "app_id_len": len(aid) if aid else 0,
+        "app_id_preview": aid[:10] + "..." if aid and len(aid) > 10 else aid,
+        "app_secret_set": ase != "",
+        "app_secret_len": len(ase) if ase else 0,
+        "port": config.SERVER_PORT,
+    }
 @app.get("/")
 async def root_get():
     return {"status": "ok"}
