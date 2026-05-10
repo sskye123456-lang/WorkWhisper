@@ -1,8 +1,7 @@
 """
-职场嘴替 - 飞书事件处理器
+职场嘴替 - 飞书事件处理器 (Fixed Version)
 """
 import json
-import os
 from typing import Optional
 import httpx
 
@@ -34,5 +33,14 @@ class FeishuHandler:
         print("DEBUG app_id=" + str(self.app_id[:10]) + "...")
         print("DEBUG app_secret=" + str(self.app_secret[:6]) + "...")
         
-        payload = {
-            "app_id": self.app_id.strip
+        payload = dict()
+        payload["app_id"] = self.app_id.strip() if self.app_id else ""
+        payload["app_secret"] = self.app_secret.strip() if self.app_secret else ""
+        
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(url, json=payload, timeout=10)
+            data = resp.json()
+            print("DEBUG json resp=" + str(data))
+            
+            if data.get("code") != 0:
+                resp2 = await client.post(url, data=payload, timeout=10)
