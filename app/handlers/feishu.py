@@ -46,9 +46,9 @@ class FeishuHandler:
             print("ERROR: No token available")
             return False
         
-        url = "https://open.feishu.cn/open-apis/im/v1/messages"
+        url = "https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=open_id"
         headers = {"Authorization": "Bearer " + token, "Content-Type": "application/json"}
-        payload = {"receive_id": open_id, "receive_id_type": "open_id", "msg_type": "interactive", "content": json.dumps(card)}
+        payload = {"receive_id": open_id, "msg_type": "interactive", "content": json.dumps(card)}
         
         print("DEBUG: Sending message to", open_id[:20])
         
