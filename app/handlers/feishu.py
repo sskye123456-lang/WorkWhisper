@@ -24,17 +24,13 @@ class FeishuHandler:
         url = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
         payload = {"app_id": self.app_id, "app_secret": self.app_secret}
         
-        print("DEBUG: Getting token...")
-        print("DEBUG: app_id len =", len(self.app_id) if self.app_id else 0)
-        
         async with httpx.AsyncClient() as client:
             resp = await client.post(url, json=payload, timeout=10)
             data = resp.json()
-            print("DEBUG: Token response =", data)
+            print("DEBUG: Token response code =", data.get("code"))
             
             if data.get("code") == 0:
                 self._token = data.get("tenant_access_token", "")
-                print("DEBUG: Token obtained successfully")
             else:
                 print("DEBUG: Token failed:", data)
         
@@ -43,33 +39,32 @@ class FeishuHandler:
     async def send_msg(self, open_id: str, card: dict) -> bool:
         token = await self.get_token()
         if not token:
-            print("ERROR: No token available")
             return False
         
         url = "https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=open_id"
         headers = {"Authorization": "Bearer " + token, "Content-Type": "application/json"}
         payload = {"receive_id": open_id, "msg_type": "interactive", "content": json.dumps(card)}
         
-        print("DEBUG: Sending message to", open_id[:20])
-        
         async with httpx.AsyncClient() as client:
             resp = await client.post(url, json=payload, headers=headers, timeout=15)
             data = resp.json()
-            print("DEBUG: Send response =", data)
+            if data.get("code") != 0:
+                print("DEBUG: Send failed:", data.get("code"), data.get("msg"))
             return data.get("code") == 0
 
     async def handle_event(self, event: dict) -> Optional[dict]:
-        print("DEBUG: handle_event called")
-        print("DEBUG: event type =", event.get("type"))
-        
         # URL verification
         if event.get("type") == "url_verification":
             return {"challenge": event.get("challenge")}
         
-        # Message event
+        # Card callback (new version uses same POST /)
+        if event.get("type") == "card":
+            await self._handle_card_callback(event)
+            return None
+        
+        # Message event (v2 format)
         header = event.get("header", {})
         event_type = header.get("event_type", "")
-        print("DEBUG: event_type from header =", event_type)
         
         if event_type == "im.message.receive_v1":
             event_data = event.get("event", {})
@@ -78,30 +73,21 @@ class FeishuHandler:
         return None
 
     async def _on_message(self, ev: dict):
-        print("DEBUG: _on_message called")
-        
         sender = ev.get("sender", {})
         sender_id = sender.get("sender_id", {})
         open_id = sender_id.get("open_id", "")
         
-        print("DEBUG: open_id =", open_id[:20] if open_id else "None")
-        
         if not open_id:
-            print("ERROR: No open_id found")
             return
         
         message = ev.get("message", {})
-        print("DEBUG: full message =", message)
         msg_type = message.get("message_type") or message.get("msg_type")
         content = message.get("content", "")
-        
-        print("DEBUG: msg_type =", msg_type)
         
         # Get or create user
         user = db.get_user(open_id)
         if not user:
             user = db.create_user(open_id)
-            print("DEBUG: Created new user")
         
         card = None
         
@@ -110,7 +96,6 @@ class FeishuHandler:
                 text = json.loads(content).get("text", "") if isinstance(content, str) else content
             except:
                 text = str(content)
-            print("DEBUG: text =", text[:50] if text else "None")
             card = await self._handle_text(user, text)
         else:
             card = card_builder.simple_text_card("\u6682\u65e0\u6cd5\u5904\u7406\u8fd9\u79cd\u6d88\u606f\u7c7b\u578b\uff0c\u8bf7\u53d1\u9001\u6587\u5b57\u6d88\u606f", "orange")
@@ -120,44 +105,41 @@ class FeishuHandler:
 
     async def _handle_text(self, user: User, text: str) -> dict:
         text = text.strip()
-        print("DEBUG: _handle_text, state =", user.state, "text =", text[:30])
         
-        # Commands
-        if text.lower() in ["help", "帮助"]:
+        if text.lower() in ["help", "\u5e2e\u52a9"]:
             return card_builder.help_card()
         
-        if text in ["开始测试", "开始quiz", "quiz"]:
+        if text in ["\u5f00\u59cb\u6d4b\u8bd5", "quiz"]:
             user.state = UserState.IN_QUIZ
             user.quiz_progress = 0
             user.quiz_answers = []
             db.update_user(user)
             return card_builder.quiz_card(get_question(1), 0)
         
-        if text.lower() in ["switch", "换人设", "切换人设"]:
+        if text.lower() in ["switch", "\u6362\u4eba\u8bbe", "\u5207\u6362\u4eba\u8bbe"]:
             return card_builder.persona_select_card(user.current_persona)
         
-        if text.lower() in ["test", "重新测试", "再测一次"]:
+        if text in ["\u8bf7\u5916\u63f4", "\u5916\u63f4"]:
+            if not user.current_persona:
+                return card_builder.persona_select_card()
+            remaining = user.get_reinforcement_remaining(config.REINFORCEMENT_DAILY_LIMIT)
+            return card_builder.reinforcement_select_card(user.current_persona, remaining)
+        
+        if text.lower() in ["test", "\u91cd\u65b0\u6d4b\u8bd5", "\u518d\u6d4b\u4e00\u6b21"]:
             user.state = UserState.IN_QUIZ
             user.quiz_progress = 0
             user.quiz_answers = []
             db.update_user(user)
             return card_builder.quiz_card(get_question(1), 0)
         
-        # State machine - ANY message triggers appropriate response
+        # State machine
         if user.state == UserState.NEW:
-            # New user - start quiz
-            user.state = UserState.IN_QUIZ
-            user.quiz_progress = 0
-            user.quiz_answers = []
-            db.update_user(user)
-            return card_builder.quiz_card(get_question(1), 0)
+            return card_builder.welcome_card()
         
         if user.state == UserState.IN_QUIZ:
-            # Continue quiz
             q = get_question(user.quiz_progress + 1)
             if q:
                 return card_builder.quiz_card(q, user.quiz_progress)
-            # Quiz done, show result
             scores = calculate_persona_scores(user.quiz_answers)
             persona = get_dominant_persona(scores)
             user.state = UserState.HAS_PERSONA
@@ -166,25 +148,23 @@ class FeishuHandler:
             return card_builder.quiz_result_card(persona, scores)
         
         if user.state == UserState.HAS_PERSONA:
-            # Generate reply
             if not user.current_persona:
                 return card_builder.persona_select_card()
-            
             suggestion = llm_service.generate_reply(user.current_persona, text)
             remaining = user.get_reinforcement_remaining(config.REINFORCEMENT_DAILY_LIMIT)
             return card_builder.reply_card(suggestion, text, remaining)
         
-        # Default
         return card_builder.welcome_card()
 
-    async def handle_card_callback(self, event: dict):
-        print("DEBUG: handle_card_callback called")
+    async def _handle_card_callback(self, event: dict):
+        print("DEBUG: card callback received")
         
         action = event.get("action", {})
         value = action.get("value", {})
         open_id = event.get("open_id", "")
         
         if not open_id:
+            print("DEBUG: no open_id in callback")
             return
         
         user = db.get_user(open_id)
@@ -250,7 +230,7 @@ class FeishuHandler:
                     try:
                         tp = PersonaType(p_str)
                         p = PERSONAS[tp]
-                        card = card_builder.simple_text_card("\u5df2\u547c\u5524\u5916\u63f4 " + p.emoji + " " + p.title + " \uff01\u8bf7\u91cd\u65b0\u53d1\u9001\u540c\u4e8b\u7684\u6d88\u606f\uff0c\u6211\u5c06\u7528\u5916\u63f4\u98ce\u683c\u5e2e\u4f60\u56de\u590d\u3002", "purple")
+                        card = card_builder.simple_text_card("\u5df2\u547c\u5524\u5916\u63f4 " + p.emoji + " " + p.title + " \uff01\u8bf7\u91cd\u65b0\u53d1\u9001\u540c\u4e8b\u7684\u6d88\u606f\u3002", "purple")
                     except:
                         pass
                 else:
