@@ -9,10 +9,15 @@ class CardBuilder:
     def welcome_card() -> dict:
         return {
             "config": {"wide_screen_mode": True},
-            "header": {"title": {"tag": "plain_text", "content": "职场嘴替"}, "template": "blue"},
+            "header": {"title": {"tag": "plain_text", "content": "职场嘴替 - 打工人的嘴替"}, "template": "blue"},
             "elements": [
-                {"tag": "div", "text": {"tag": "lark_md", "content": "打工人的嘴替来了！把同事的消息发给我，我帮你用不同风格回复。"}},
-                {"tag": "div", "text": {"tag": "lark_md", "content": "发送任意消息即可开始，或输入 **帮助** 查看指令。"}},
+                {"tag": "div", "text": {"tag": "lark_md", "content": "**\ud83d\udc4b \u6b22\u8fce\u4f7f\u7528\u804c\u573a\u5634\u66ff\uff01**\n\n\u628a\u540c\u4e8b\u7684\u6d88\u606f\u53d1\u7ed9\u6211\uff0c\u6211\u7528\u4f60\u7684\u4eba\u8bbe\u98ce\u683c\u5e2e\u4f60\u56de\u590d\uff0c\u5305\u62ec **\u6e29\u548c\u7248 / \u6807\u51c6\u7248 / \u706b\u529b\u7248** \u4e09\u79cd\u98ce\u683c\u3002"}},
+                {"tag": "hr"},
+                {"tag": "div", "text": {"tag": "lark_md", "content": "**\ud83c\udfaf \u5148\u505a\u4e2a\u6d4b\u8bd5\uff0c\u627e\u51fa\u4f60\u7684\u804c\u573a\u4eba\u683c**\n\n\u6d4b\u8bd5\u5c06\u6839\u636e\u4f60\u7684\u9009\u62e9\uff0c\u5212\u5206\u4e3a **\u548c\u4e8b\u4f6c\u3001\u6574\u987f\u4fa0\u3001\u592a\u6781\u738b\u3001\u901a\u900f\u6d3e\u3001\u6367\u54c5\u738b\u3001\u6bd2\u820c\u541b** \u516d\u79cd\u4eba\u8bbe\uff0c\u7136\u540e\u6211\u5c31\u7528\u8fd9\u4e2a\u98ce\u683c\u5e2e\u4f60\u56de\u590d\u4e86\u3002"}},
+                {"tag": "action", "actions": [
+                    {"tag": "button", "text": {"content": "\ud83c\udf89 \u5f00\u59cb\u6d4b\u8bd5", "tag": "plain_text"}, "value": {"action": "start_quiz"}, "type": "primary"},
+                    {"tag": "button", "text": {"content": "\ud83d\udcf1 \u5148\u770b\u770b\u7528\u6cd5", "tag": "plain_text"}, "value": {"action": "help"}, "type": "default"},
+                ]},
             ]
         }
 
