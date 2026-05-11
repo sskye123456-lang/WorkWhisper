@@ -91,7 +91,8 @@ class FeishuHandler:
             return
         
         message = ev.get("message", {})
-        msg_type = message.get("msg_type")
+        print("DEBUG: full message =", message)
+        msg_type = message.get("message_type") or message.get("msg_type")
         content = message.get("content", "")
         
         print("DEBUG: msg_type =", msg_type)
