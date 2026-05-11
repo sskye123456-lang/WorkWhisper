@@ -27,29 +27,23 @@ async def root():
 async def health():
     return {"status": "healthy"}
 
-
 @app.post("/")
 async def webhook(request: Request):
-    """飞书事件订阅入口 - 处理消息事件"""
+    """飞书事件订阅入口 - 处理消息事件和卡片回调"""
     try:
         body = await request.body()
         event = json.loads(body)
         
-        # URL verification
         if event.get("type") == "url_verification":
             return {"challenge": event.get("challenge")}
         
-        # Handle message event only
+        # 检测是否为卡片回调（飞书可能把回调发到 / 而不是 /callback）
+        if event.get("action"):
+            await feishu_handler.handle_card_callback(event)
+            return JSONResponse(content={"toast": {"type": "success", "content": ""}})
+        
+        # Handle message event
         result = await feishu_handler.handle_event(event)
-        
-        if result:
-            return JSONResponse(content=result)
-        
-        return JSONResponse(content={"status": "ok"})
-    
-    except Exception as e:
-        print(f"Webhook error: {e}")
-        return JSONResponse(status_code=500, content={"error": str(e)})
 
 
 @app.post("/callback")
