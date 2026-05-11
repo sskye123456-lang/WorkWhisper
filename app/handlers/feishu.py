@@ -91,7 +91,7 @@ class FeishuHandler:
             return
         
         message = ev.get("message", {})
-        msg_type = message.get("message_type") or message.get("msg_type") or "text"
+        msg_type = message.get("msg_type")
         content = message.get("content", "")
         
         print("DEBUG: msg_type =", msg_type)
@@ -112,7 +112,7 @@ class FeishuHandler:
             print("DEBUG: text =", text[:50] if text else "None")
             card = await self._handle_text(user, text)
         else:
-            card = card_builder.simple_text_card("I can only handle text messages for now", "orange")
+            card = card_builder.simple_text_card("\u6682\u65e0\u6cd5\u5904\u7406\u8fd9\u79cd\u6d88\u606f\u7c7b\u578b\uff0c\u8bf7\u53d1\u9001\u6587\u5b57\u6d88\u606f", "orange")
         
         if card:
             await self.send_msg(open_id, card)
@@ -124,6 +124,13 @@ class FeishuHandler:
         # Commands
         if text.lower() in ["help", "帮助"]:
             return card_builder.help_card()
+        
+        if text in ["开始测试", "开始quiz", "quiz"]:
+            user.state = UserState.IN_QUIZ
+            user.quiz_progress = 0
+            user.quiz_answers = []
+            db.update_user(user)
+            return card_builder.quiz_card(get_question(1), 0)
         
         if text.lower() in ["switch", "换人设", "切换人设"]:
             return card_builder.persona_select_card(user.current_persona)
@@ -188,7 +195,17 @@ class FeishuHandler:
         
         card = None
         
-        if action_type == "answer":
+        if action_type == "start_quiz":
+            user.state = UserState.IN_QUIZ
+            user.quiz_progress = 0
+            user.quiz_answers = []
+            db.update_user(user)
+            card = card_builder.quiz_card(get_question(1), 0)
+        
+        elif action_type == "help":
+            card = card_builder.help_card()
+        
+        elif action_type == "answer":
             qid = value.get("question_id", 1)
             answer = value.get("answer", "A")
             user = db.save_quiz_answer(open_id, qid, answer)
@@ -210,7 +227,7 @@ class FeishuHandler:
                     persona = PersonaType(p_str)
                     user = db.set_persona(open_id, persona)
                     p = PERSONAS[persona]
-                    card = card_builder.simple_text_card("Switched to " + p.emoji + " " + p.title, p.header_template)
+                    card = card_builder.simple_text_card("\u5df2\u5207\u6362\u5230 " + p.emoji + " " + p.title, p.header_template)
                 except:
                     card = card_builder.persona_select_card()
         
@@ -220,8 +237,7 @@ class FeishuHandler:
                 try:
                     persona = PersonaType(p_str)
                     user = db.set_persona(open_id, persona)
-                    p = PERSONAS[persona]
-                    card = card_builder.simple_text_card("Ready! Send me any message and I will help you reply.", p.header_template)
+                    card = card_builder.simple_text_card("\u5df2\u9009\u5b9a\uff01\u628a\u540c\u4e8b\u7684\u6d88\u606f\u53d1\u7ed9\u6211\uff0c\u6211\u5c31\u5e2e\u4f60\u56de\u590d\uff01", "blue")
                 except:
                     pass
         
@@ -233,7 +249,7 @@ class FeishuHandler:
                     try:
                         tp = PersonaType(p_str)
                         p = PERSONAS[tp]
-                        card = card_builder.simple_text_card("Reinforcement " + p.emoji + " " + p.title + " called!", "purple")
+                        card = card_builder.simple_text_card("\u5df2\u547c\u5524\u5916\u63f4 " + p.emoji + " " + p.title + " \uff01\u8bf7\u91cd\u65b0\u53d1\u9001\u540c\u4e8b\u7684\u6d88\u606f\uff0c\u6211\u5c06\u7528\u5916\u63f4\u98ce\u683c\u5e2e\u4f60\u56de\u590d\u3002", "purple")
                     except:
                         pass
                 else:
