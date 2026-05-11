@@ -89,49 +89,49 @@ class LLMService:
         if fire_match:
             fire = fire_match.group(1).strip()
         if not mild:
-            mild = "Let me think about this..."
+            mild = "\u8fd9\u4e2a\u6211\u8981\u8003\u8651\u4e00\u4e0b..."
         if not standard:
-            standard = "Got it, I will handle it."
+            standard = "\u6536\u5230\u4e86\uff0c\u6211\u6765\u5904\u7406。"
         if not fire:
-            fire = "I need to check on this."
+            fire = "\u8fd9\u4e2a\u4e8b\u6211\u9700\u8981\u786e\u8ba4\u4e00\u4e0b\u3002"
         return mild, standard, fire
 
     def _get_mock_reply(self, persona: PersonaType, message: str) -> ReplySuggestion:
         mock_replies = {
             PersonaType.SHA_SENG: ReplySuggestion(
-                mild="Okay, sounds good!",
-                standard="Sure, I agree with you.",
-                fire="You are absolutely right!",
+                mild="\u597d\u7684\u597d\u7684\uff0c\u6ca1\u95ee\u9898\uff01",
+                standard="\u884c\u884c\uff0c\u6211\u8d5a\u540c\u610f\u3002",
+                fire="\u4f60\u8bf4\u5f97\u5bf9\uff01\u6211\u5168\u529b\u914d\u5408\uff01",
                 persona=persona, original_message=message,
             ),
             PersonaType.HANZAWA_NAOKI: ReplySuggestion(
-                mild="I have some concerns about this.",
-                standard="This does not seem right to me.",
-                fire="I cannot accept this. Double payback!",
+                mild="\u8fd9\u4e2a\u6211\u6709\u4e9b\u7591\u95ee\u3002",
+                standard="\u8fd9\u6837\u505a\u4e0d\u592a\u5408\u9002\u5427\u3002",
+                fire="\u6211\u65e0\u6cd5\u63a5\u53d7\uff01\u8981\u52a0\u500d\u5949\u8fd8\uff01",
                 persona=persona, original_message=message,
             ),
             PersonaType.ZHEN_HUAN: ReplySuggestion(
-                mild="Let me consider this carefully.",
-                standard="That is an interesting perspective.",
-                fire="I will have to think about how to respond properly.",
+                mild="\u8ba9\u6211\u597d\u597d\u60f3\u60f3\u3002",
+                standard="\u8fd9\u662f\u4e2a\u6709\u8da3\u7684\u89c2\u70b9\u3002",
+                fire="\u8fd9\u4e2a\u95ee\u9898\u6211\u5f97\u597d\u597d\u601d\u91cf\u4e00\u4e0b\u3002",
                 persona=persona, original_message=message,
             ),
             PersonaType.YU_HUA: ReplySuggestion(
-                mild="Ha, life is full of surprises.",
-                standard="Well, that is one way to look at it.",
-                fire="You know what they say about expectations...",
+                mild="\u54c8\uff0c\u4eba\u751f\u5c31\u662f\u8fd9\u6837\u3002",
+                standard="\u8fd9\u4e5f\u662f\u4e00\u79cd\u770b\u6cd5\u5427\u3002",
+                fire="\u4f60\u77e5\u9053\u5417\uff0c\u671f\u5f85\u548c\u73b0\u5b9e\u603b\u6709\u843d\u5dee\u3002",
                 persona=persona, original_message=message,
             ),
             PersonaType.YUE_YUNPENG: ReplySuggestion(
-                mild="Oh wow, you got me there!",
-                standard="Haha, okay okay, I hear you!",
-                fire="My dear friend, you are too much!",
+                mild="\u54ce\u5466\uff0c\u8fd9\u4e2a\u6211\u670d\uff01",
+                standard="\u54c8\u54c8\uff0c\u884c\u884c\u884c\uff0c\u6211\u542c\u5230\u4e86\uff01",
+                fire="\u6211\u7684\u597d\u670b\u53cb\uff0c\u4f60\u8fd9\u662f\u8981\u547d\u554a\uff01",
                 persona=persona, original_message=message,
             ),
             PersonaType.XIAO_S: ReplySuggestion(
-                mild="Um, okay...",
-                standard="What exactly are you trying to say?",
-                fire="Seriously? What is wrong with you?",
+                mild="\u562c\uff0c\u8fd9\u2026\u2026",
+                standard="\u4f60\u5230\u5e95\u8981\u8bf4\u4ec0\u4e48\uff1f",
+                fire="\u770b\u770b\u4f60\u5728\u8bf4\u4ec0\u4e48\u9b3c\u8bdd\uff1f",
                 persona=persona, original_message=message,
             ),
         }
