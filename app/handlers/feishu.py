@@ -232,11 +232,13 @@ class FeishuHandler:
             "call_reinforcement": self._cb_call_reinforcement,
         }
         
-        handler = handlers.get(action_type)
+                handler = handlers.get(action_type)
         if handler:
             card = await handler(user, open_id, value)
             if card:
-                await self.send_msg(open_id, card)
+                # 飞书卡片回调：返回卡片内容更新原卡片，不发新消息
+                return card
+        return None
         else:
             print(f"Unknown action: {action_type}")
 
