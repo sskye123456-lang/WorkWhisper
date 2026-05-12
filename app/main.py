@@ -40,7 +40,7 @@ async def webhook(request: Request):
         # 检测是否为卡片回调（飞书可能把回调发到 / 而不是 /callback）
         if event.get("action"):
             await feishu_handler.handle_card_callback(event)
-            return JSONResponse(content={"toast": {"type": "success", "content": ""}})
+            return JSONResponse(content={})
         
         # Handle message event
         result = await feishu_handler.handle_event(event)
