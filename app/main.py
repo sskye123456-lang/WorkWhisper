@@ -38,8 +38,10 @@ async def webhook(request: Request):
             return {"challenge": event.get("challenge")}
         
         # 检测是否为卡片回调（飞书可能把回调发到 / 而不是 /callback）
-        if event.get("action"):
-            await feishu_handler.handle_card_callback(event)
+                if event.get("action"):
+            card = await feishu_handler.handle_card_callback(event)
+            if card:
+                return JSONResponse(content=card)
             return JSONResponse(content={})
         
         # Handle message event
